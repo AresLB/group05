@@ -123,7 +123,6 @@ cd <YOUR_PROJECT_FOLDER>
 ```sh
 docker compose up --build
 ```
-
 This command will:
 
 * build the frontend container (React app served via Nginx)
@@ -133,7 +132,7 @@ This command will:
 
 ### Step 3: Access the application
 
-* Frontend (Web interface): [http://localhost:3000](http://localhost:3000)
+* Frontend (Web interface): [http://localhost:3000](http://localhost:3000) 
 
 ---
 
