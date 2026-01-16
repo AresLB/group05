@@ -24,16 +24,43 @@
 
     <main class="container">
         <section id="home" class="section active">
-            <h2>Welcome to Hackathon Management System</h2>
-            <p>Manage hackathon events, participants, and registrations with ease.</p>
+            <div class="card">
+                <h2>Welcome to Hackathon Management System</h2>
+                <p class="text-muted">Milestone 2 - Group 5 - Student 2: Baur, Lennard (12018378)</p>
+                <p style="margin-top: 1rem;">A web-based system implementing both relational (MariaDB) and NoSQL (MongoDB) database designs for managing hackathon events, participants, and registrations.</p>
+            </div>
+
             <div class="info-cards">
                 <div class="card">
                     <h3>MariaDB</h3>
-                    <p>Relational database implementation</p>
+                    <p>Relational database with normalized schema</p>
+                    <ul style="text-align: left; margin-top: 1rem; color: var(--gray);">
+                        <li>Workshop as weak entity</li>
+                        <li>IS-A relationship (Person → Participant/Judge)</li>
+                        <li>Registration relationship with attributes</li>
+                    </ul>
                 </div>
                 <div class="card">
                     <h3>MongoDB</h3>
-                    <p>NoSQL database implementation</p>
+                    <p>NoSQL database with denormalized documents</p>
+                    <ul style="text-align: left; margin-top: 1rem; color: var(--gray);">
+                        <li>Embedded registrations in events</li>
+                        <li>Participant event history</li>
+                        <li>Migration from MariaDB</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Data Management</h3>
+                <p class="text-muted mb-2">Initialize, import, or migrate data between databases</p>
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="DataModule.importData()">
+                        Import Random Data (MariaDB)
+                    </button>
+                    <button class="btn btn-primary" onclick="DataModule.migrateData()">
+                        Migrate to MongoDB
+                    </button>
                 </div>
             </div>
         </section>
@@ -81,22 +108,41 @@
         </section>
 
         <section id="analytics" class="section">
-            <h2>Event Analytics Report</h2>
+            <div class="card">
+                <h2>Event Analytics Report</h2>
+                <p class="text-muted">Student 2 Analytics Report - Event Registration Statistics</p>
+            </div>
+
             <div class="db-selector">
                 <button class="db-btn active" data-db="mariadb">MariaDB</button>
                 <button class="db-btn" data-db="mongodb">MongoDB</button>
             </div>
-            <button id="load-analytics" class="btn btn-secondary">Load Analytics Report</button>
+
+            <div class="card">
+                <div class="form-group">
+                    <label for="analytics-filter">Filter by Event Type:</label>
+                    <select id="analytics-filter">
+                        <option value="">All Events</option>
+                        <option value="Hackathon">Hackathon</option>
+                        <option value="Conference">Conference</option>
+                        <option value="Workshop">Workshop</option>
+                    </select>
+                </div>
+                <button id="load-analytics" class="btn btn-secondary">Load Analytics Report</button>
+            </div>
+
             <div id="analytics-report"></div>
         </section>
     </main>
 
     <footer>
         <div class="container">
-            <p>&copy; 2026 Hackathon Management System | Student 2: Baur, Lennard | IMSE 2025W</p>
+            <p>&copy; 2026 Hackathon Management System | Student 2: Baur, Lennard (12018378) | IMSE 2025W</p>
         </div>
     </footer>
 
+    <!-- Load API module first, then main app -->
+    <script src="/js/api.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>
