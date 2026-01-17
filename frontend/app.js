@@ -1,5 +1,6 @@
 // API Base URL
 const API_BASE = '/api';
+let editingSubmissionId = null;
 
 // DOM Elements
 const navButtons = document.querySelectorAll('.nav-btn');
@@ -100,24 +101,36 @@ async function loadDashboard() {
         
         // Recent submissions
         const recentHtml = summary.recentSubmissions.length > 0 
-            ? `<table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Project</th>
-                        <th>Team</th>
-                        <th>Submitted</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${summary.recentSubmissions.map(s => `
+            ? `<div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <td>${s.project_name}</td>
-                            <td>${s.team || 'N/A'}</td>
-                            <td>${new Date(s.submission_time).toLocaleString()}</td>
+                            <th>Event Name</th>
+                            <th>Project Name</th>
+                            <th>Type</th>
+                            <th>Participants</th>
+                            <th>Description</th>
+                            <th>Technology Stack</th>
+                            <th>GitHub Repo</th>
+                            <th>Submitted</th>                   
                         </tr>
-                    `).join('')}
-                </tbody>
-               </table>`
+                    </thead>
+                    <tbody>
+                        ${summary.recentSubmissions.map(s => `
+                            <tr>
+                                <td>${s.event_name || 'Unassigned'}</td>
+                                <td>${s.project_name}</td>
+                                <td><span class="badge ${s.submission_type === 'team' ? 'badge-info' : 'badge-success'}">${s.submission_type || 'Unassigned'}</span></td>
+                                <td>${s.team || 'Unassigned'}</td>
+                                <td>${s.description || 'Unassigned'}</td>
+                                <td>${s.technology_stack || 'Unassigned'}</td>
+                                <td>${s.repository_url ? `<a href="${s.repository_url}" target="_blank" rel="noopener noreferrer">Repo</a>` : 'Unassigned'}</td>
+                                <td>${new Date(s.submission_time).toLocaleString()}</td>                              
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+               </div>`
             : '<p class="empty-state">No submissions yet</p>';
         
         document.getElementById('recent-submissions').innerHTML = recentHtml;
@@ -248,6 +261,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initialize dashboard on load
     loadDashboard();
+
+    const cancelEditBtn = document.getElementById('cancel-edit-btn');
+    if (cancelEditBtn) {
+        cancelEditBtn.addEventListener('click', () => {
+            resetSubmissionForm();
+        });
+    }
 });
 
 async function loadSubmissions() {
@@ -276,10 +296,11 @@ async function loadSubmissions() {
                                 <td>${s.event_name || 'N/A'}</td>
                                 <td>${s.project_name}</td>
                                 <td><span class="badge ${s.submission_type === 'team' ? 'badge-info' : 'badge-success'}">${s.submission_type || 'N/A'}</span></td>
-                                <td>${s.team_members || 'N/A'}</td>
+                                <td>${s.team_members || 'Unassigned'}</td>
                                 <td>${s.technology_stack || 'N/A'}</td>
                                 <td>${new Date(s.submission_time).toLocaleString()}</td>
                                 <td>
+                                    <button class="btn btn-secondary btn-sm" onclick="startEditSubmission(${s.submission_id})">Edit</button>
                                     <button class="btn btn-danger btn-sm" onclick="deleteSubmission(${s.submission_id})">Delete</button>
                                 </td>
                             </tr>
@@ -293,6 +314,83 @@ async function loadSubmissions() {
         
     } catch (error) {
         document.getElementById('submissions-list').innerHTML = '<p>Failed to load submissions</p>';
+    }
+}
+
+function setSubmissionFormMode(isEditing) {
+    const submitBtn = document.getElementById('submit-project-btn');
+    const cancelBtn = document.getElementById('cancel-edit-btn');
+    if (submitBtn) {
+        submitBtn.textContent = isEditing ? 'Update Project' : 'Submit Project';
+    }
+    if (cancelBtn) {
+        cancelBtn.style.display = isEditing ? 'inline-flex' : 'none';
+    }
+}
+
+function resetSubmissionForm() {
+    const form = document.getElementById('submit-project-form');
+    if (form) form.reset();
+
+    document.querySelectorAll('#team-members-list input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+    });
+
+    const teamMembersList = document.getElementById('team-members-list');
+    if (teamMembersList) {
+        teamMembersList.classList.remove('individual-mode');
+        const hint = document.querySelector('.individual-hint');
+        if (hint) hint.remove();
+        teamMembersList.innerHTML = '<p class="hint">Please select an event first to see registered participants.</p>';
+    }
+
+    editingSubmissionId = null;
+    setSubmissionFormMode(false);
+    loadEventsForSubmission();
+}
+
+async function startEditSubmission(id) {
+    try {
+        const result = await apiCall(`/submissions/${id}`);
+        const submission = result.data;
+        if (!submission) {
+            showToast('Submission not found', 'error');
+            return;
+        }
+
+        editingSubmissionId = id;
+        setSubmissionFormMode(true);
+
+        await loadEventsForSubmission();
+        const eventSelect = document.getElementById('event-select-submission');
+        if (eventSelect) {
+            eventSelect.value = submission.event_id;
+        }
+
+        await loadParticipantsForProject(submission.event_id);
+
+        const teamMemberIds = submission.team_member_ids
+            ? submission.team_member_ids.split(',').map(idStr => parseInt(idStr, 10))
+            : [];
+
+        document.querySelectorAll('#team-members-list input[type="checkbox"]').forEach(cb => {
+            cb.checked = teamMemberIds.includes(parseInt(cb.value, 10));
+        });
+
+        const typeInput = document.querySelector(`input[name="submission-type"][value="${submission.submission_type}"]`);
+        if (typeInput) {
+            typeInput.checked = true;
+            typeInput.dispatchEvent(new Event('change'));
+        }
+
+        document.getElementById('project-name').value = submission.project_name || '';
+        document.getElementById('project-description').value = submission.description || '';
+        document.getElementById('tech-stack').value = submission.technology_stack || '';
+        document.getElementById('repo-url').value = submission.repository_url || '';
+
+        document.getElementById('submit-project').scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+        showToast(`Failed to load submission: ${error.message}`, 'error');
     }
 }
 
@@ -325,15 +423,14 @@ document.getElementById('submit-project-form').addEventListener('submit', async 
     }
     
     // Validate submission type consistency
-    if (submissionType === 'individual' && teamMemberIds.length > 1) {
-        showToast('Individual submissions can only have one team member', 'error');
+    if (submissionType === 'individual' && teamMemberIds.length !== 1) {
+        showToast('Individual submissions must have exactly one team member', 'error');
         return;
     }
     
-    if (submissionType === 'team' && teamMemberIds.length === 1) {
-        if (!confirm('You selected "Team" but only chose one member. Continue as team submission?')) {
-            return;
-        }
+    if (submissionType === 'team' && teamMemberIds.length < 2) {
+        showToast('Team submissions must have at least two members', 'error');
+        return;
     }
     
     const projectData = {
@@ -347,28 +444,22 @@ document.getElementById('submit-project-form').addEventListener('submit', async 
     };
     
     try {
-        const result = await apiCall('/submissions', {
-            method: 'POST',
+        const endpoint = editingSubmissionId ? `/submissions/${editingSubmissionId}` : '/submissions';
+        const method = editingSubmissionId ? 'PUT' : 'POST';
+        const result = await apiCall(endpoint, {
+            method,
             body: JSON.stringify(projectData)
         });
         
-        showToast(result.message || 'Project submitted successfully!', 'success');
-        e.target.reset();
-        teamCheckboxes.forEach(cb => cb.checked = false);
-        
-        // Clear submission type selection
-        const submissionTypeInputs = document.querySelectorAll('input[name="submission-type"]');
-        submissionTypeInputs.forEach(input => input.checked = false);
-        
-        // Reset team members list
-        document.getElementById('team-members-list').innerHTML = '<p class="hint">Please select an event first to see registered participants.</p>';
+        showToast(result.message || (editingSubmissionId ? 'Project updated successfully!' : 'Project submitted successfully!'), 'success');
+        resetSubmissionForm();
         
         // Reload data
-        loadEventsForSubmission();
         loadSubmissions();
+        loadDashboard();
         
     } catch (error) {
-        showToast(`Failed to submit project: ${error.message}`, 'error');
+        showToast(`Failed to ${editingSubmissionId ? 'update' : 'submit'} project: ${error.message}`, 'error');
     }
 });
 

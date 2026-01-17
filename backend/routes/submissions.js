@@ -251,10 +251,17 @@ router.post('/', async (req, res) => {
         const determinedType = team_member_ids.length === 1 ? 'individual' : 'team';
         const finalSubmissionType = submission_type || determinedType;
         
-        if (finalSubmissionType === 'individual' && team_member_ids.length > 1) {
+        if (finalSubmissionType === 'individual' && team_member_ids.length !== 1) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Individual submissions cannot have multiple team members' 
+                error: 'Individual submissions must have exactly one team member' 
+            });
+        }
+        
+        if (finalSubmissionType === 'team' && team_member_ids.length < 2) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Team submissions must have at least two members' 
             });
         }
         
@@ -318,6 +325,167 @@ router.post('/', async (req, res) => {
     } catch (error) {
         await conn.rollback();
         console.error('Submission error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        conn.release();
+    }
+});
+
+// PUT /api/submissions/:id - Update submission
+router.put('/:id', async (req, res) => {
+    const conn = await req.mysqlPool.getConnection();
+    
+    try {
+        const submissionId = parseInt(req.params.id, 10);
+        const { 
+            event_id, 
+            project_name, 
+            description, 
+            technology_stack, 
+            repository_url, 
+            team_member_ids,
+            submission_type 
+        } = req.body;
+        
+        if (!submissionId) {
+            return res.status(400).json({ success: false, error: 'Invalid submission ID' });
+        }
+        
+        if (!project_name || !team_member_ids || team_member_ids.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Project name and at least one team member are required' 
+            });
+        }
+        
+        if (!event_id) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Event selection is required' 
+            });
+        }
+        
+        const [existing] = await conn.query(
+            'SELECT submission_id FROM Submission WHERE submission_id = ?',
+            [submissionId]
+        );
+        
+        if (existing.length === 0) {
+            return res.status(404).json({ success: false, error: 'Submission not found' });
+        }
+        
+        const [eventCheck] = await conn.query(
+            'SELECT event_id, name, end_date FROM HackathonEvent WHERE event_id = ?',
+            [event_id]
+        );
+        
+        if (eventCheck.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Selected event does not exist' 
+            });
+        }
+        
+        const eventEndDate = new Date(eventCheck[0].end_date);
+        const currentDate = new Date();
+        
+        if (currentDate > eventEndDate) {
+            return res.status(400).json({ 
+                success: false, 
+                error: `Submission period for "${eventCheck[0].name}" has closed` 
+            });
+        }
+        
+        const [registeredCheck] = await conn.query(
+            'SELECT person_id FROM Registration WHERE event_id = ? AND person_id IN (?)',
+            [event_id, team_member_ids]
+        );
+        
+        if (registeredCheck.length !== team_member_ids.length) {
+            const registeredIds = registeredCheck.map(r => r.person_id);
+            const unregisteredIds = team_member_ids.filter(id => !registeredIds.includes(id));
+            
+            const [unregisteredNames] = await conn.query(
+                'SELECT CONCAT(first_name, " ", last_name) as name FROM Person WHERE person_id IN (?)',
+                [unregisteredIds]
+            );
+            
+            const names = unregisteredNames.map(p => p.name).join(', ');
+            
+            return res.status(400).json({ 
+                success: false, 
+                error: `All team members must be registered for the selected event. Not registered: ${names}` 
+            });
+        }
+        
+        const determinedType = team_member_ids.length === 1 ? 'individual' : 'team';
+        const finalSubmissionType = submission_type || determinedType;
+        
+        if (finalSubmissionType === 'individual' && team_member_ids.length !== 1) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Individual submissions must have exactly one team member' 
+            });
+        }
+        
+        if (finalSubmissionType === 'team' && team_member_ids.length < 2) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Team submissions must have at least two members' 
+            });
+        }
+        
+        await conn.beginTransaction();
+        
+        await conn.query(
+            `UPDATE Submission
+             SET event_id = ?, project_name = ?, description = ?, technology_stack = ?, repository_url = ?, submission_type = ?
+             WHERE submission_id = ?`,
+            [
+                event_id,
+                project_name,
+                description || '',
+                technology_stack || '',
+                repository_url || '',
+                finalSubmissionType,
+                submissionId
+            ]
+        );
+        
+        await conn.query('DELETE FROM Creates WHERE submission_id = ?', [submissionId]);
+        
+        for (const person_id of team_member_ids) {
+            await conn.query(
+                'INSERT INTO Creates (person_id, submission_id) VALUES (?, ?)',
+                [person_id, submissionId]
+            );
+        }
+        
+        await conn.commit();
+        
+        const [updatedSubmission] = await req.mysqlPool.query(`
+            SELECT 
+                s.*,
+                e.name as event_name,
+                GROUP_CONCAT(DISTINCT CONCAT(p.first_name, ' ', p.last_name) SEPARATOR ', ') as team_members,
+                GROUP_CONCAT(DISTINCT c.person_id) as team_member_ids
+            FROM Submission s
+            LEFT JOIN HackathonEvent e ON s.event_id = e.event_id
+            LEFT JOIN Creates c ON s.submission_id = c.submission_id
+            LEFT JOIN Person p ON c.person_id = p.person_id
+            WHERE s.submission_id = ?
+            GROUP BY s.submission_id
+        `, [submissionId]);
+        
+        res.json({ 
+            success: true, 
+            message: 'Project updated successfully!',
+            data: updatedSubmission[0]
+        });
+        
+    } catch (error) {
+        await conn.rollback();
+        console.error('Update submission error:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         conn.release();

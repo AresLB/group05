@@ -120,7 +120,10 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary">Submit Project</button>
+                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                        <button type="submit" id="submit-project-btn" class="btn btn-primary">Submit Project</button>
+                        <button type="button" id="cancel-edit-btn" class="btn btn-secondary" style="display: none;">Cancel Edit</button>
+                    </div>
                 </form>
             </div>
 
@@ -216,9 +219,9 @@
                         <label for="filter-event-type">Event Type</label>
                         <select id="filter-event-type">
                             <option value="Hackathon">Hackathon</option>
-                            <option value="Conference">Conference</option>
                             <option value="Workshop">Workshop</option>
-                            <option value="Meetup">Meetup</option>
+                            <option value="Seminar">Seminar</option>
+                            <option value="Networking">Networking</option>
                         </select>
                     </div>
                     <button class="btn btn-secondary" onclick="loadRegistrationAnalytics()">Apply Filter</button>
@@ -251,7 +254,7 @@
             </div>
 
             <div class="card">
-                <h3>Current Database Statistics</h3>
+                <h3>Current Database Statistics:(MySQL)</h3>
                 <div id="db-stats">Loading...</div>
             </div>
         </section>

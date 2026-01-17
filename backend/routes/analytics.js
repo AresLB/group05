@@ -8,8 +8,8 @@ router.get('/submissions', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         
-        // Default filter: submissions after November 8, 2025
-        const filterStartDate = startDate || '2025-10-01 00:00:00';
+        // Default filter: submissions after November 1, 2025
+        const filterStartDate = startDate || '2025-11-01 00:00:00';
         const filterEndDate = endDate || '2099-11-10 23:59:59';
         
         const [results] = await req.mysqlPool.query(`
@@ -146,13 +146,22 @@ router.get('/summary', async (req, res) => {
         const [registrations] = await req.mysqlPool.query('SELECT COUNT(*) as count FROM Registration');
         
         const [recentSubmissions] = await req.mysqlPool.query(`
-            SELECT s.project_name, s.submission_time, 
-                   GROUP_CONCAT(CONCAT(p.first_name, ' ', p.last_name) SEPARATOR ', ') as team
+            SELECT 
+                s.submission_id,
+                s.project_name,
+                s.submission_time,
+                s.submission_type,
+                s.description,
+                s.repository_url,
+                s.technology_stack,
+                e.name as event_name,
+                GROUP_CONCAT(CONCAT(p.first_name, ' ', p.last_name) SEPARATOR ', ') as team
             FROM Submission s
             LEFT JOIN Creates c ON s.submission_id = c.submission_id
             LEFT JOIN Person p ON c.person_id = p.person_id
+            LEFT JOIN HackathonEvent e ON s.event_id = e.event_id
             GROUP BY s.submission_id
-            ORDER BY s.submission_time DESC
+            ORDER BY s.submission_id DESC
             LIMIT 5
         `);
         
