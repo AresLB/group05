@@ -560,6 +560,105 @@ router.delete('/workshops/:eventId/:workshopNumber', async (req, res) => {
     }
 });
 
+// POST /api/nosql/indexes/create - Create indexes for workshop analytics (Student 2 - Task 2.3.5)
+router.post('/indexes/create', async (req, res) => {
+    try {
+        const mongoDB = req.mongoDB;
+        if (!mongoDB) {
+            return res.status(503).json({ success: false, error: 'MongoDB not connected' });
+        }
+
+        // Create index on workshops.skill_level for filtering
+        const indexResult = await mongoDB.collection('events').createIndex(
+            { 'workshops.skill_level': 1 },
+            { name: 'idx_workshops_skill_level' }
+        );
+
+        // Create compound index for sorting
+        const indexResult2 = await mongoDB.collection('events').createIndex(
+            { 'start_date': 1 },
+            { name: 'idx_events_start_date' }
+        );
+
+        res.json({
+            success: true,
+            message: 'Indexes created successfully',
+            indexes: [indexResult, indexResult2]
+        });
+    } catch (error) {
+        console.error('Index creation error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/nosql/indexes/list - List all indexes on events collection
+router.get('/indexes/list', async (req, res) => {
+    try {
+        const mongoDB = req.mongoDB;
+        if (!mongoDB) {
+            return res.status(503).json({ success: false, error: 'MongoDB not connected' });
+        }
+
+        const indexes = await mongoDB.collection('events').indexes();
+        res.json({ success: true, indexes });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/nosql/analytics/workshops/explain - Get execution stats for analytics query
+router.get('/analytics/workshops/explain', async (req, res) => {
+    try {
+        const mongoDB = req.mongoDB;
+        if (!mongoDB) {
+            return res.status(503).json({ success: false, error: 'MongoDB not connected' });
+        }
+
+        const { skillLevel } = req.query;
+        const filterSkillLevel = skillLevel || 'all';
+
+        // Build the same pipeline as the analytics query
+        const pipeline = [
+            { $unwind: { path: '$workshops', preserveNullAndEmptyArrays: false } }
+        ];
+
+        if (filterSkillLevel !== 'all') {
+            pipeline.push({ $match: { 'workshops.skill_level': filterSkillLevel } });
+        }
+
+        pipeline.push({
+            $project: {
+                workshop_number: '$workshops.workshop_number',
+                event_id: '$_id',
+                workshop_title: '$workshops.title',
+                skill_level: '$workshops.skill_level',
+                duration: '$workshops.duration',
+                event_name: '$name',
+                venue_name: '$venue.name'
+            }
+        });
+
+        // Get execution stats using explain
+        const explainResult = await mongoDB.collection('events')
+            .aggregate(pipeline)
+            .explain('executionStats');
+
+        res.json({
+            success: true,
+            filter: { skillLevel: filterSkillLevel },
+            executionStats: {
+                totalDocsExamined: explainResult.stages?.[0]?.['$cursor']?.executionStats?.totalDocsExamined || 'N/A',
+                executionTimeMillis: explainResult.stages?.[0]?.['$cursor']?.executionStats?.executionTimeMillis || 'N/A',
+                indexesUsed: explainResult.stages?.[0]?.['$cursor']?.queryPlanner?.winningPlan?.inputStage?.indexName || 'COLLSCAN (no index)'
+            },
+            fullExplain: explainResult
+        });
+    } catch (error) {
+        console.error('Explain error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // GET /api/nosql/analytics/workshops - Workshop Analytics Report (Student 2)
 router.get('/analytics/workshops', async (req, res) => {
     try {
