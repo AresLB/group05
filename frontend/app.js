@@ -752,6 +752,27 @@ async function loadDbStats() {
             </div>
         `;
     }
+
+    try {
+        const mongoData = await apiCall('/nosql/stats');
+        const mongoHtml = `
+            <div class="summary-grid">
+                ${Object.entries(mongoData.stats).map(([collection, count]) => `
+                    <div class="summary-item">
+                        <div class="value">${count}</div>
+                        <div class="label">${collection}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        document.getElementById('mongo-stats').innerHTML = mongoHtml;
+    } catch (error) {
+        document.getElementById('mongo-stats').innerHTML = `
+            <div style="color: #c53030; padding: 1rem; background: #fed7d7; border-radius: 6px;">
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    }
 }
 
 // Import Data Button Handler
@@ -809,18 +830,30 @@ document.getElementById('migrate-nosql-btn').addEventListener('click', async () 
 
     try {
         const result = await apiCall('/nosql/migrate', { method: 'POST' });
+        const statsEntries = Object.entries(result.stats || {});
+        const warningEntries = statsEntries.filter(([key]) => key.startsWith('warnings_'));
+        const mainEntries = statsEntries.filter(([key]) => !key.startsWith('warnings_'));
+        const hasWarnings = warningEntries.some(([, value]) => value > 0);
+
         statusDiv.innerHTML = `
             <p class="badge badge-success">Migration complete!</p>
             <div class="summary-grid" style="margin-top: 1rem;">
-                ${Object.entries(result.stats).map(([key, value]) => `
+                ${mainEntries.map(([key, value]) => `
                     <div class="summary-item">
                         <div class="value">${value}</div>
                         <div class="label">${key}</div>
                     </div>
                 `).join('')}
+                ${hasWarnings ? warningEntries.map(([key, value]) => `
+                    <div class="summary-item">
+                        <div class="value">${value}</div>
+                        <div class="label">${key}</div>
+                    </div>
+                `).join('') : ''}
             </div>
         `;
         showToast('MongoDB migration completed!', 'success');
+        loadDbStats();
     } catch (error) {
         statusDiv.innerHTML = `<p class="badge badge-error">Migration failed: ${error.message}</p>`;
         showToast(`Migration failed: ${error.message}`, 'error');

@@ -125,8 +125,18 @@ router.post('/migrate', async (req, res) => {
             evaluatesByJudge.get(e.person_id).push(e);
         });
 
-        const collections = ['participants', 'judges', 'events', 'submissions', 'sponsors', 'venues'];
+        const warnings = {
+            registrations_missing_event: 0,
+            registrations_missing_person: 0,
+            creates_missing_submission: 0,
+            creates_missing_person: 0,
+            submissions_missing_event: 0
+        };
+
+        const collections = ['participants', 'events', 'submissions'];
+        const legacyCollections = ['judges', 'sponsors', 'venues'];
         await Promise.all(collections.map(name => mongoDB.collection(name).deleteMany({})));
+        await Promise.all(legacyCollections.map(name => mongoDB.collection(name).drop().catch(() => null)));
 
         // Build participant documents with embedded registrations and submissions.
         const participantDocs = participants.map(p => {
@@ -135,6 +145,8 @@ router.post('/migrate', async (req, res) => {
             const regDocs = regs.map(r => {
                 const event = eventsById.get(r.event_id);
                 const venue = event ? venuesById.get(event.venue_id) : null;
+                if (!event) warnings.registrations_missing_event++;
+                if (!peopleById.get(r.person_id)) warnings.registrations_missing_person++;
                 return {
                     event_id: r.event_id,
                     registration_number: r.registration_number,
@@ -148,12 +160,18 @@ router.post('/migrate', async (req, res) => {
             const created = createsByPerson.get(p.person_id) || [];
             const submissionDocs = created.map(c => {
                 const submission = submissionsById.get(c.submission_id);
-                if (!submission) return null;
+                if (!submission) {
+                    warnings.creates_missing_submission++;
+                    return null;
+                }
+                const event = eventsById.get(submission.event_id);
+                const venue = event ? venuesById.get(event.venue_id) : null;
                 return {
                     submission_id: submission.submission_id,
                     project_name: submission.project_name,
                     submission_time: submission.submission_time,
-                    repository_url: submission.repository_url
+                    repository_url: submission.repository_url,
+                    event_snapshot: buildEventSnapshot(event, venue)
                 };
             }).filter(Boolean);
 
@@ -171,41 +189,21 @@ router.post('/migrate', async (req, res) => {
             };
         });
 
-        const judgeDocs = judges.map(j => {
-            const person = peopleById.get(j.person_id);
-            const evals = evaluatesByJudge.get(j.person_id) || [];
-            const evaluationDocs = evals.map(e => {
-                const submission = submissionsById.get(e.submission_id);
-                return {
-                    submission_id: e.submission_id,
-                    project_name: submission ? submission.project_name : null,
-                    score: e.score,
-                    feedback: e.feedback
-                };
-            });
-            return {
-                _id: j.person_id,
-                person: buildPersonSnapshot(person),
-                judge: {
-                    expertise_area: j.expertise_area,
-                    years_experience: j.years_experience,
-                    organization: j.organization
-                },
-                evaluations: evaluationDocs
-            };
-        });
-
         const eventDocs = events.map(e => {
             const venue = venuesById.get(e.venue_id);
             const regRows = registrationsByEvent.get(e.event_id) || [];
-            const regDocs = regRows.map(r => ({
-                person_id: r.person_id,
-                registration_number: r.registration_number,
-                registration_timestamp: r.registration_timestamp,
-                payment_status: r.payment_status,
-                ticket_type: r.ticket_type,
-                participant: buildPersonSnapshot(peopleById.get(r.person_id))
-            }));
+            const regDocs = regRows.map(r => {
+                const person = peopleById.get(r.person_id);
+                if (!person) warnings.registrations_missing_person++;
+                return {
+                    person_id: r.person_id,
+                    registration_number: r.registration_number,
+                    registration_timestamp: r.registration_timestamp,
+                    payment_status: r.payment_status,
+                    ticket_type: r.ticket_type,
+                    participant: buildPersonSnapshot(person)
+                };
+            });
 
             const sponsorLinks = supportsByEvent.get(e.event_id) || [];
             const sponsorDocs = sponsorLinks.map(s => {
@@ -242,7 +240,14 @@ router.post('/migrate', async (req, res) => {
 
         const submissionDocs = submissions.map(s => {
             const creators = createsBySubmission.get(s.submission_id) || [];
-            const teamDocs = creators.map(c => buildPersonSnapshot(peopleById.get(c.person_id))).filter(Boolean);
+            const teamDocs = creators.map(c => {
+                const person = peopleById.get(c.person_id);
+                if (!person) warnings.creates_missing_person++;
+                return buildPersonSnapshot(person);
+            }).filter(Boolean);
+            const event = eventsById.get(s.event_id);
+            const venue = event ? venuesById.get(event.venue_id) : null;
+            if (!event) warnings.submissions_missing_event++;
             const evals = evaluatesBySubmission.get(s.submission_id) || [];
             const evaluationDocs = evals.map(e => ({
                 judge_id: e.person_id,
@@ -252,59 +257,23 @@ router.post('/migrate', async (req, res) => {
             }));
             return {
                 _id: s.submission_id,
+                event_id: s.event_id,
                 project_name: s.project_name,
                 description: s.description,
                 submission_time: s.submission_time,
                 technology_stack: s.technology_stack,
                 repository_url: s.repository_url,
+                submission_type: s.submission_type,
+                event_snapshot: buildEventSnapshot(event, venue),
                 team: teamDocs,
                 evaluations: evaluationDocs
             };
         });
 
-        const sponsorDocs = sponsors.map(s => {
-            const links = supportsBySponsor.get(s.sponsor_id) || [];
-            const eventsDocs = links.map(l => {
-                const event = eventsById.get(l.event_id);
-                const venue = event ? venuesById.get(event.venue_id) : null;
-                return buildEventSnapshot(event, venue);
-            }).filter(Boolean);
-            return {
-                _id: s.sponsor_id,
-                company_name: s.company_name,
-                industry: s.industry,
-                website: s.website,
-                contribution_amount: s.contribution_amount,
-                supported_events: eventsDocs
-            };
-        });
-
-        const venueDocs = venues.map(v => {
-            const hostedEvents = events.filter(e => e.venue_id === v.venue_id).map(e => ({
-                event_id: e.event_id,
-                name: e.name,
-                start_date: e.start_date,
-                end_date: e.end_date,
-                event_type: e.event_type,
-                max_participants: e.max_participants
-            }));
-            return {
-                _id: v.venue_id,
-                name: v.name,
-                address: v.address,
-                capacity: v.capacity,
-                facilities: v.facilities,
-                events: hostedEvents
-            };
-        });
-
         const insertOps = [];
         if (participantDocs.length) insertOps.push(mongoDB.collection('participants').insertMany(participantDocs));
-        if (judgeDocs.length) insertOps.push(mongoDB.collection('judges').insertMany(judgeDocs));
         if (eventDocs.length) insertOps.push(mongoDB.collection('events').insertMany(eventDocs));
         if (submissionDocs.length) insertOps.push(mongoDB.collection('submissions').insertMany(submissionDocs));
-        if (sponsorDocs.length) insertOps.push(mongoDB.collection('sponsors').insertMany(sponsorDocs));
-        if (venueDocs.length) insertOps.push(mongoDB.collection('venues').insertMany(venueDocs));
 
         await Promise.all(insertOps);
 
@@ -313,15 +282,38 @@ router.post('/migrate', async (req, res) => {
             message: 'Migration completed',
             stats: {
                 participants: participantDocs.length,
-                judges: judgeDocs.length,
                 events: eventDocs.length,
                 submissions: submissionDocs.length,
-                sponsors: sponsorDocs.length,
-                venues: venueDocs.length
+                warnings_reg_missing_event: warnings.registrations_missing_event,
+                warnings_reg_missing_person: warnings.registrations_missing_person,
+                warnings_creates_missing_submission: warnings.creates_missing_submission,
+                warnings_creates_missing_person: warnings.creates_missing_person,
+                warnings_submissions_missing_event: warnings.submissions_missing_event
             }
         });
     } catch (error) {
         console.error('NoSQL migration error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/nosql/stats - Current MongoDB collection counts
+router.get('/stats', async (req, res) => {
+    try {
+        const mongoDB = req.mongoDB;
+        if (!mongoDB) {
+            return res.status(503).json({ success: false, error: 'MongoDB not connected' });
+        }
+
+        const collections = ['participants', 'events', 'submissions'];
+        const stats = {};
+
+        for (const name of collections) {
+            stats[name] = await mongoDB.collection(name).countDocuments();
+        }
+
+        res.json({ success: true, stats });
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
