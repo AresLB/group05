@@ -284,10 +284,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-async function loadSubmissions() {
+async function loadSubmissionsSQL() {
     try {
-        const endpoint = submissionDbMode === 'sql' ? '/submissions' : '/nosql/submissions';
-        const data = await apiCall(endpoint);
+        const data = await apiCall('/submissions');
         
         const tableHtml = data.data.length > 0
             ? `<div class="table-wrapper">
@@ -325,11 +324,64 @@ async function loadSubmissions() {
                </div>`
             : '<p class="empty-state">No submissions yet. Submit your first project!</p>';
         
-        document.getElementById('submissions-list').innerHTML = tableHtml;
+        document.getElementById('submissions-list-sql').innerHTML = tableHtml;
         
     } catch (error) {
-        document.getElementById('submissions-list').innerHTML = '<p>Failed to load submissions</p>';
+        document.getElementById('submissions-list-sql').innerHTML = '<p>Failed to load submissions</p>';
     }
+}
+
+async function loadSubmissionsNoSQL() {
+    try {
+        const data = await apiCall('/nosql/submissions');
+        
+        const tableHtml = data.data.length > 0
+            ? `<div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Event</th>
+                            <th>Project Name</th>
+                            <th>Type</th>
+                            <th>Team Members</th>
+                            <th>Technology Stack</th>
+                            <th>Submitted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.data.map((s, index) => `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>${s.event_name || 'N/A'}</td>
+                                <td>${s.project_name}</td>
+                                <td><span class="badge ${s.submission_type === 'team' ? 'badge-info' : 'badge-success'}">${s.submission_type || 'N/A'}</span></td>
+                                <td>${s.team_members || 'Unassigned'}</td>
+                                <td>${s.technology_stack || 'N/A'}</td>
+                                <td>${new Date(s.submission_time).toLocaleString()}</td>
+                                <td>
+                                    <button class="btn btn-secondary btn-sm" onclick="startEditSubmission(${s.submission_id})">Edit</button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteSubmission(${s.submission_id})">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+               </div>`
+            : '<p class="empty-state">No submissions yet. Submit your first project!</p>';
+        
+        document.getElementById('submissions-list-nosql').innerHTML = tableHtml;
+        
+    } catch (error) {
+        document.getElementById('submissions-list-nosql').innerHTML = '<p>Failed to load submissions</p>';
+    }
+}
+
+async function loadSubmissions() {
+    // Load both SQL and NoSQL submissions
+    await loadSubmissionsSQL();
+    await loadSubmissionsNoSQL();
 }
 
 function setSubmissionFormMode(isEditing) {
