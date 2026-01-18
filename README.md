@@ -67,7 +67,7 @@ hackathon-system/
    ```
 
 4. **Access the application:**
-   - Open browser: http://localhost:3002
+   - Open browser: http://localhost:3001
 
 ## Features
 
