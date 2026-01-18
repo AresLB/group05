@@ -18,7 +18,7 @@
         <button class="nav-btn active" data-section="dashboard">Dashboard</button>
         <button class="nav-btn" data-section="submit-project">Submit Project (S1)</button>
         <button class="nav-btn" data-section="analytics-s1">Analytics Report (S1)</button>
-        <button class="nav-btn" data-section="register-event">Register Event (S2)</button>      
+        <button class="nav-btn" data-section="manage-workshops">Manage Workshops (S2)</button>
         <button class="nav-btn" data-section="analytics-s2">Analytics Report (S2)</button>
         <button class="nav-btn" data-section="data-management">Data Management</button>
     </nav>
@@ -165,71 +165,91 @@
             </div>
         </section>
 
-        <!-- Register Event Section (Student 2's Use Case) -->
-        <section id="register-event" class="section">
-            <h2>🎫 Register for Event</h2>
-            <p class="section-description">Student 2 Use Case: Register Participant for Event (Weak Entity -
-                Registration)</p>
+        <!-- Manage Workshops Section (Student 2's Use Case) -->
+        <section id="manage-workshops" class="section">
+            <h2>🎓 Manage Workshops</h2>
+            <p class="section-description">Student 2 Use Case: Manage Workshops (Weak Entity - Workshop depends on HackathonEvent)</p>
 
             <div class="card">
-                <form id="register-event-form">
+                <form id="workshop-form">
                     <div class="form-group">
-                        <label for="event-select">Select Event *</label>
-                        <select id="event-select" required>
+                        <label for="workshop-event-select">Select Event *</label>
+                        <select id="workshop-event-select" required>
                             <option value="">-- Select an Event --</option>
                         </select>
+                        <p class="hint">Workshop is a weak entity - it belongs to an event</p>
                     </div>
 
                     <div class="form-group">
-                        <label for="participant-select">Select Participant *</label>
-                        <select id="participant-select" required>
-                            <option value="">-- Select a Participant --</option>
+                        <label for="workshop-title">Workshop Title *</label>
+                        <input type="text" id="workshop-title" required placeholder="e.g., Introduction to Machine Learning">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="workshop-description">Description</label>
+                        <textarea id="workshop-description" rows="3" placeholder="Describe the workshop content..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="workshop-duration">Duration (minutes)</label>
+                        <input type="number" id="workshop-duration" value="60" min="15" max="480">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="workshop-skill-level">Skill Level</label>
+                        <select id="workshop-skill-level">
+                            <option value="Beginner">Beginner</option>
+                            <option value="Intermediate">Intermediate</option>
+                            <option value="Advanced">Advanced</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label for="ticket-type">Ticket Type</label>
-                        <select id="ticket-type">
-                            <option value="Regular">Regular</option>
-                            <option value="Early Bird">Early Bird</option>
-                            <option value="VIP">VIP</option>
-                            <option value="Student">Student</option>
-                        </select>
+                        <label for="workshop-max-attendees">Max Attendees</label>
+                        <input type="number" id="workshop-max-attendees" value="30" min="5" max="200">
                     </div>
 
-                    <button type="submit" class="btn btn-primary">Register</button>
+                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                        <button type="submit" id="workshop-submit-btn" class="btn btn-primary">Create Workshop</button>
+                        <button type="button" id="workshop-cancel-btn" class="btn btn-secondary" style="display: none;">Cancel Edit</button>
+                    </div>
                 </form>
             </div>
 
             <div class="card">
-                <h3>Current Registrations</h3>
-                <div id="registrations-list">Loading...</div>
+                <h3>Current Workshops</h3>
+                <div id="workshops-list">Loading...</div>
             </div>
         </section>
 
         <!-- Analytics Report Section (Student 2) -->
         <section id="analytics-s2" class="section">
-            <h2>📈 Analytics Report - Registration Statistics</h2>
-            <p class="section-description">Student 2 Analytics: Event Registration Statistics (Filter: event_type)</p>
+            <h2>📈 Analytics Report - Workshop Statistics</h2>
+            <p class="section-description">Student 2 Analytics: Workshop Statistics (Filter: skill_level) - Involves Workshop (Weak Entity), HackathonEvent, Venue</p>
 
             <div class="card">
                 <h3>Filter Options</h3>
                 <div class="filter-row">
                     <div class="form-group">
-                        <label for="filter-event-type">Event Type</label>
-                        <select id="filter-event-type">
-                            <option value="Hackathon">Hackathon</option>
-                            <option value="Workshop">Workshop</option>
-                            <option value="Seminar">Seminar</option>
-                            <option value="Networking">Networking</option>
+                        <label for="filter-skill-level">Skill Level</label>
+                        <select id="filter-skill-level">
+                            <option value="all">All Levels</option>
+                            <option value="Beginner">Beginner</option>
+                            <option value="Intermediate">Intermediate</option>
+                            <option value="Advanced">Advanced</option>
                         </select>
                     </div>
-                    <button class="btn btn-secondary" onclick="loadRegistrationAnalytics()">Apply Filter</button>
+                    <button class="btn btn-secondary" onclick="loadWorkshopAnalytics()">Apply Filter</button>
                 </div>
             </div>
 
             <div class="card">
-                <h3>Registration Report</h3>
+                <h3>Summary Statistics</h3>
+                <div id="analytics-s2-summary">Loading...</div>
+            </div>
+
+            <div class="card">
+                <h3>Workshop Report</h3>
                 <div id="analytics-s2-table">Loading...</div>
             </div>
         </section>

@@ -61,7 +61,6 @@ hackathon-system/
    cd backend
    npm install
    ```
-
 3. **Start the backend:**
    ```bash
    npm start

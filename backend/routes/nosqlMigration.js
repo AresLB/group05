@@ -312,6 +312,13 @@ router.get('/stats', async (req, res) => {
             stats[name] = await mongoDB.collection(name).countDocuments();
         }
 
+        // Count embedded workshops (Student 2 data)
+        const workshopCount = await mongoDB.collection('events').aggregate([
+            { $unwind: '$workshops' },
+            { $count: 'total' }
+        ]).toArray();
+        stats['workshops (embedded)'] = workshopCount[0]?.total || 0;
+
         res.json({ success: true, stats });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

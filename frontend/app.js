@@ -71,15 +71,15 @@ function loadSectionData(sectionId) {
             loadEventsForSubmission();
             loadSubmissions();
             break;
-        case 'register-event':
-            loadEventsForRegistration();
-            loadRegistrations();
+        case 'manage-workshops':
+            loadEventsForWorkshops();
+            loadWorkshops();
             break;
         case 'analytics-s1':
             loadSubmissionAnalytics();
             break;
         case 'analytics-s2':
-            loadRegistrationAnalytics();
+            loadWorkshopAnalytics();
             break;
         case 'data-management':
             loadDbStats();
@@ -475,127 +475,175 @@ async function deleteSubmission(id) {
     }
 }
 
-// ==================== REGISTER EVENT (Student 2) ====================
+// ==================== MANAGE WORKSHOPS (Student 2) ====================
 
-async function loadEventsForRegistration() {
+let editingWorkshop = null; // Stores {event_id, workshop_number} when editing
+
+async function loadEventsForWorkshops() {
     try {
-        const data = await apiCall('/registrations/events');
-        
-        const selectHtml = data.data.map(e => 
-            `<option value="${e.event_id}">${e.name} (${e.event_type}) - ${new Date(e.start_date).toLocaleDateString()} [${e.current_registrations}/${e.max_participants}]</option>`
+        const data = await apiCall('/workshops/events');
+
+        const selectHtml = data.data.map(e =>
+            `<option value="${e.event_id}">${e.name} - ${new Date(e.start_date).toLocaleDateString()} [${e.workshop_count} workshops]</option>`
         ).join('');
-        
-        document.getElementById('event-select').innerHTML = 
+
+        document.getElementById('workshop-event-select').innerHTML =
             '<option value="">-- Select an Event --</option>' + selectHtml;
-            
+
     } catch (error) {
         console.error('Failed to load events:', error);
+        showToast('Failed to load events', 'error');
     }
 }
 
-// Load available participants when event is selected
-document.getElementById('event-select').addEventListener('change', async (e) => {
-    const eventId = e.target.value;
-    const participantSelect = document.getElementById('participant-select');
-    
-    if (!eventId) {
-        participantSelect.innerHTML = '<option value="">-- Select a Participant --</option>';
-        return;
-    }
-    
+async function loadWorkshops() {
     try {
-        const data = await apiCall(`/registrations/available-participants/${eventId}`);
-        
-        const selectHtml = data.data.map(p => 
-            `<option value="${p.person_id}">${p.first_name} ${p.last_name} (${p.email})</option>`
-        ).join('');
-        
-        participantSelect.innerHTML = 
-            '<option value="">-- Select a Participant --</option>' + selectHtml;
-            
-    } catch (error) {
-        console.error('Failed to load participants:', error);
-    }
-});
+        const data = await apiCall('/workshops');
 
-async function loadRegistrations() {
-    try {
-        const data = await apiCall('/registrations');
-        
         const tableHtml = data.data.length > 0
             ? `<div class="table-wrapper">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Reg. Number</th>
-                            <th>Participant</th>
+                            <th>Workshop #</th>
                             <th>Event</th>
-                            <th>Ticket Type</th>
-                            <th>Status</th>
+                            <th>Title</th>
+                            <th>Duration</th>
+                            <th>Skill Level</th>
+                            <th>Max Attendees</th>
+                            <th>Venue</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.data.map(r => `
+                        ${data.data.map(w => `
                             <tr>
-                                <td>${r.registration_number}</td>
-                                <td>${r.first_name} ${r.last_name}</td>
-                                <td>${r.event_name}</td>
-                                <td>${r.ticket_type}</td>
-                                <td><span class="badge ${r.payment_status === 'completed' ? 'badge-success' : 'badge-warning'}">${r.payment_status}</span></td>
+                                <td>${w.workshop_number}</td>
+                                <td>${w.event_name}</td>
+                                <td>${w.title}</td>
+                                <td>${w.duration} min</td>
+                                <td><span class="badge ${w.skill_level === 'Beginner' ? 'badge-success' : w.skill_level === 'Intermediate' ? 'badge-warning' : 'badge-info'}">${w.skill_level}</span></td>
+                                <td>${w.max_attendees}</td>
+                                <td>${w.venue_name || 'N/A'}</td>
                                 <td>
-                                    <button class="btn btn-danger btn-sm" onclick="cancelRegistration(${r.person_id}, ${r.event_id})">Cancel</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="startEditWorkshop(${w.event_id}, ${w.workshop_number})">Edit</button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteWorkshop(${w.event_id}, ${w.workshop_number})">Delete</button>
                                 </td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
                </div>`
-            : '<p class="empty-state">No registrations yet</p>';
-        
-        document.getElementById('registrations-list').innerHTML = tableHtml;
-        
+            : '<p class="empty-state">No workshops yet. Create your first workshop!</p>';
+
+        document.getElementById('workshops-list').innerHTML = tableHtml;
+
     } catch (error) {
-        document.getElementById('registrations-list').innerHTML = '<p>Failed to load registrations</p>';
+        document.getElementById('workshops-list').innerHTML = '<p>Failed to load workshops</p>';
     }
 }
 
-// Register Event Form Handler
-document.getElementById('register-event-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const registrationData = {
-        person_id: parseInt(document.getElementById('participant-select').value),
-        event_id: parseInt(document.getElementById('event-select').value),
-        ticket_type: document.getElementById('ticket-type').value
-    };
-    
+function resetWorkshopForm() {
+    const form = document.getElementById('workshop-form');
+    if (form) form.reset();
+
+    editingWorkshop = null;
+    document.getElementById('workshop-submit-btn').textContent = 'Create Workshop';
+    document.getElementById('workshop-cancel-btn').style.display = 'none';
+    document.getElementById('workshop-event-select').disabled = false;
+}
+
+async function startEditWorkshop(eventId, workshopNumber) {
     try {
-        const result = await apiCall('/registrations', {
-            method: 'POST',
-            body: JSON.stringify(registrationData)
-        });
-        
-        showToast(`Registration successful! Number: ${result.registration_number}`, 'success');
-        e.target.reset();
-        loadEventsForRegistration();
-        loadRegistrations();
-        
+        const result = await apiCall(`/workshops/${eventId}/${workshopNumber}`);
+        const workshop = result.data;
+
+        if (!workshop) {
+            showToast('Workshop not found', 'error');
+            return;
+        }
+
+        editingWorkshop = { event_id: eventId, workshop_number: workshopNumber };
+
+        document.getElementById('workshop-event-select').value = workshop.event_id;
+        document.getElementById('workshop-event-select').disabled = true; // Can't change event for weak entity
+        document.getElementById('workshop-title').value = workshop.title;
+        document.getElementById('workshop-description').value = workshop.description || '';
+        document.getElementById('workshop-duration').value = workshop.duration || 60;
+        document.getElementById('workshop-skill-level').value = workshop.skill_level || 'Beginner';
+        document.getElementById('workshop-max-attendees').value = workshop.max_attendees || 30;
+
+        document.getElementById('workshop-submit-btn').textContent = 'Update Workshop';
+        document.getElementById('workshop-cancel-btn').style.display = 'inline-flex';
+
+        document.getElementById('manage-workshops').scrollIntoView({ behavior: 'smooth' });
+
     } catch (error) {
-        showToast(`Failed to register: ${error.message}`, 'error');
+        showToast(`Failed to load workshop: ${error.message}`, 'error');
+    }
+}
+
+// Workshop Form Handler
+document.getElementById('workshop-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const eventId = document.getElementById('workshop-event-select').value;
+    if (!eventId) {
+        showToast('Please select an event', 'error');
+        return;
+    }
+
+    const workshopData = {
+        event_id: parseInt(eventId),
+        title: document.getElementById('workshop-title').value,
+        description: document.getElementById('workshop-description').value,
+        duration: parseInt(document.getElementById('workshop-duration').value),
+        skill_level: document.getElementById('workshop-skill-level').value,
+        max_attendees: parseInt(document.getElementById('workshop-max-attendees').value)
+    };
+
+    try {
+        let result;
+        if (editingWorkshop) {
+            // Update existing workshop
+            result = await apiCall(`/workshops/${editingWorkshop.event_id}/${editingWorkshop.workshop_number}`, {
+                method: 'PUT',
+                body: JSON.stringify(workshopData)
+            });
+            showToast('Workshop updated successfully!', 'success');
+        } else {
+            // Create new workshop
+            result = await apiCall('/workshops', {
+                method: 'POST',
+                body: JSON.stringify(workshopData)
+            });
+            showToast(result.message || 'Workshop created successfully!', 'success');
+        }
+
+        resetWorkshopForm();
+        loadWorkshops();
+        loadEventsForWorkshops();
+
+    } catch (error) {
+        showToast(`Failed to ${editingWorkshop ? 'update' : 'create'} workshop: ${error.message}`, 'error');
     }
 });
 
-async function cancelRegistration(personId, eventId) {
-    if (!confirm('Are you sure you want to cancel this registration?')) return;
-    
+// Cancel Edit Button
+document.getElementById('workshop-cancel-btn').addEventListener('click', () => {
+    resetWorkshopForm();
+});
+
+async function deleteWorkshop(eventId, workshopNumber) {
+    if (!confirm('Are you sure you want to delete this workshop?')) return;
+
     try {
-        await apiCall(`/registrations/${personId}/${eventId}`, { method: 'DELETE' });
-        showToast('Registration cancelled', 'success');
-        loadRegistrations();
-        loadEventsForRegistration();
+        await apiCall(`/workshops/${eventId}/${workshopNumber}`, { method: 'DELETE' });
+        showToast('Workshop deleted successfully', 'success');
+        loadWorkshops();
+        loadEventsForWorkshops();
     } catch (error) {
-        showToast(`Failed to cancel: ${error.message}`, 'error');
+        showToast(`Failed to delete: ${error.message}`, 'error');
     }
 }
 
@@ -670,49 +718,71 @@ async function loadSubmissionAnalytics() {
 
 // ==================== ANALYTICS (Student 2) ====================
 
-async function loadRegistrationAnalytics() {
-    const eventType = document.getElementById('filter-event-type').value;
-    
+async function loadWorkshopAnalytics() {
+    const skillLevel = document.getElementById('filter-skill-level').value;
+
     try {
-        const data = await apiCall(`/analytics/registrations?eventType=${eventType}`);
-        
+        const data = await apiCall(`/analytics/workshops?skillLevel=${skillLevel}`);
+
+        // Summary section
+        const summaryHtml = `
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="value">${data.summary.totalWorkshops}</div>
+                    <div class="label">Total Workshops</div>
+                </div>
+                <div class="summary-item">
+                    <div class="value">${data.summary.uniqueEvents}</div>
+                    <div class="label">Events with Workshops</div>
+                </div>
+                <div class="summary-item">
+                    <div class="value">${data.summary.averageDuration} min</div>
+                    <div class="label">Avg Duration</div>
+                </div>
+            </div>
+            <h4>Skill Level Distribution</h4>
+            <p>${Object.entries(data.summary.skillDistribution).map(([level, count]) =>
+                `<span class="badge ${level === 'Beginner' ? 'badge-success' : level === 'Intermediate' ? 'badge-warning' : 'badge-info'}">${level}: ${count}</span>`
+            ).join(' ')}</p>
+        `;
+        document.getElementById('analytics-s2-summary').innerHTML = summaryHtml;
+
+        // Table section
         const tableHtml = data.data.length > 0
             ? `<div class="table-wrapper">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th>Workshop #</th>
+                            <th>Title</th>
                             <th>Event</th>
-                            <th>Type</th>
-                            <th>Dates</th>
+                            <th>Skill Level</th>
+                            <th>Duration</th>
+                            <th>Max Attendees</th>
                             <th>Venue</th>
-                            <th>Registrations</th>
-                            <th>Capacity %</th>
-                            <th>Paid</th>
-                            <th>Pending</th>
-                            <th>Participants</th>
+                            <th>Venue Capacity</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.data.map(r => `
+                        ${data.data.map(w => `
                             <tr>
-                                <td>${r.event_name}</td>
-                                <td>${r.event_type}</td>
-                                <td>${new Date(r.start_date).toLocaleDateString()} - ${new Date(r.end_date).toLocaleDateString()}</td>
-                                <td>${r.venue_name}</td>
-                                <td>${r.total_registrations}/${r.max_participants}</td>
-                                <td><span class="badge ${r.capacity_percentage > 80 ? 'badge-warning' : 'badge-success'}">${r.capacity_percentage}%</span></td>
-                                <td>${r.paid_registrations}</td>
-                                <td>${r.pending_payments}</td>
-                                <td>${r.registered_participants || 'None'}</td>
+                                <td>${w.workshop_number}</td>
+                                <td>${w.workshop_title}</td>
+                                <td>${w.event_name}</td>
+                                <td><span class="badge ${w.skill_level === 'Beginner' ? 'badge-success' : w.skill_level === 'Intermediate' ? 'badge-warning' : 'badge-info'}">${w.skill_level}</span></td>
+                                <td>${w.duration} min</td>
+                                <td>${w.max_attendees}</td>
+                                <td>${w.venue_name || 'N/A'}</td>
+                                <td>${w.venue_capacity || 'N/A'}</td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
                </div>`
-            : '<p class="empty-state">No events found for the selected type</p>';
-        
+            : '<p class="empty-state">No workshops found for the selected skill level</p>';
+
         document.getElementById('analytics-s2-table').innerHTML = tableHtml;
-        
+
     } catch (error) {
         showToast(`Failed to load analytics: ${error.message}`, 'error');
     }

@@ -10,7 +10,9 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Use /frontend in Docker, ../frontend locally
+const frontendPath = process.env.DB_HOST === 'mariadb' ? '/frontend' : path.join(__dirname, '../frontend');
+app.use(express.static(frontendPath));
 
 // Database configurations
 const mysqlConfig = {
@@ -76,7 +78,7 @@ async function initDatabases(retries = 5) {
 const dataImportRoutes = require('./routes/dataImport');
 const submissionRoutes = require('./routes/submissions');
 const analyticsRoutes = require('./routes/analytics');
-const registrationRoutes = require('./routes/registrations');
+const workshopRoutes = require('./routes/workshops');
 const nosqlMigrationRoutes = require('./routes/nosqlMigration');
 
 // Health check - MUST come before database middleware
@@ -133,12 +135,12 @@ app.use('/api', (req, res, next) => {
 app.use('/api/data', dataImportRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/registrations', registrationRoutes);
+app.use('/api/workshops', workshopRoutes);
 app.use('/api/nosql', nosqlMigrationRoutes);
 
 // Serve frontend
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+    res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 // Start server

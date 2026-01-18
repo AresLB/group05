@@ -91,49 +91,82 @@ router.get('/submissions', async (req, res) => {
     }
 });
 
-// GET /api/analytics/registrations - Student 2's Analytics Report
-// Event Registration Statistics
-// Filter field: event_type
-router.get('/registrations', async (req, res) => {
+// GET /api/analytics/workshops - Student 2's Analytics Report
+// Workshop Statistics (Weak Entity)
+// Filter field: skill_level
+// Entities involved: Workshop (weak entity), HackathonEvent (owner), Venue
+router.get('/workshops', async (req, res) => {
     try {
-        const { eventType } = req.query;
-        const filterEventType = eventType || 'Hackathon';
-        
-        const [results] = await req.mysqlPool.query(`
+        const { skillLevel } = req.query;
+        const filterSkillLevel = skillLevel || 'all';
+
+        let query = `
             SELECT
-                e.event_id,
+                -- Workshop data (Weak Entity)
+                w.workshop_number,
+                w.event_id,
+                w.title AS workshop_title,
+                w.description AS workshop_description,
+                w.duration,
+                w.skill_level,
+                w.max_attendees,
+
+                -- HackathonEvent data (Owner Entity)
                 e.name AS event_name,
                 e.event_type,
                 e.start_date,
                 e.end_date,
-                e.max_participants,
+                e.max_participants AS event_max_participants,
+
+                -- Venue data (Related Entity via Event)
+                v.venue_id,
                 v.name AS venue_name,
                 v.address AS venue_address,
                 v.capacity AS venue_capacity,
-                COUNT(r.person_id) AS total_registrations,
-                ROUND((COUNT(r.person_id) * 100.0 / e.max_participants), 2) AS capacity_percentage,
-                SUM(CASE WHEN r.payment_status = 'completed' THEN 1 ELSE 0 END) AS paid_registrations,
-                SUM(CASE WHEN r.payment_status = 'pending' THEN 1 ELSE 0 END) AS pending_payments,
-                GROUP_CONCAT(
-                    CONCAT(p.first_name, ' ', p.last_name, ' (', r.ticket_type, ')')
-                    SEPARATOR ', '
-                ) AS registered_participants
-            FROM HackathonEvent e
-            JOIN Venue v ON e.venue_id = v.venue_id
-            LEFT JOIN Registration r ON e.event_id = r.event_id
-            LEFT JOIN Person p ON r.person_id = p.person_id
-            WHERE e.event_type = ?
-            GROUP BY e.event_id, e.name, e.event_type, e.start_date, e.end_date,
-                     e.max_participants, v.name, v.address, v.capacity
-            ORDER BY total_registrations DESC
-        `, [filterEventType]);
-        
+                v.facilities AS venue_facilities,
+
+                -- Computed statistics
+                (SELECT COUNT(*) FROM Workshop w2 WHERE w2.event_id = e.event_id) AS workshops_per_event
+
+            FROM Workshop w
+            INNER JOIN HackathonEvent e ON w.event_id = e.event_id
+            LEFT JOIN Venue v ON e.venue_id = v.venue_id
+        `;
+
+        const params = [];
+        if (filterSkillLevel !== 'all') {
+            query += ` WHERE w.skill_level = ?`;
+            params.push(filterSkillLevel);
+        }
+
+        query += ` ORDER BY e.start_date, w.workshop_number`;
+
+        const [results] = await req.mysqlPool.query(query, params);
+
+        // Calculate summary statistics
+        const totalWorkshops = results.length;
+        const uniqueEvents = [...new Set(results.map(r => r.event_id))].length;
+        const totalDuration = results.reduce((sum, r) => sum + (r.duration || 0), 0);
+        const avgDuration = totalWorkshops > 0 ? Math.round(totalDuration / totalWorkshops) : 0;
+
+        // Skill level distribution
+        const skillDistribution = {};
+        results.forEach(r => {
+            skillDistribution[r.skill_level] = (skillDistribution[r.skill_level] || 0) + 1;
+        });
+
         res.json({
             success: true,
-            filter: { eventType: filterEventType },
+            filter: { skillLevel: filterSkillLevel },
+            summary: {
+                totalWorkshops,
+                uniqueEvents,
+                averageDuration: avgDuration,
+                skillDistribution
+            },
             data: results
         });
-        
+
     } catch (error) {
         console.error('Analytics error:', error);
         res.status(500).json({ success: false, error: error.message });
