@@ -9,7 +9,7 @@
 
 ## Project Overview
 
-This project implements a **web-based Hackathon Management System** developed as part of the IMSE course.
+This project implements a **Web-based Hackathon Management System** developed as part of the IMSE course.
 The system supports the core workflows defined in Milestone 1 and fully implemented in Milestone 2, including both relational and NoSQL database backends.
 
 Implemented use cases:
